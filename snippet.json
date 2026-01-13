@@ -1,0 +1,26 @@
+{
+    "Python: HTTP Server": {
+        "lang": "python",
+        "code": "python -m http.server 8000\n# Serves current directory on port 8000"
+    },
+    "Git: Undo Last Commit": {
+        "lang": "bash",
+        "code": "git reset --soft HEAD~1\n# Undoes commit, keeps changes staged"
+    },
+    "Docker: Kill All": {
+        "lang": "bash",
+        "code": "docker rm -f $(docker ps -a -q)"
+    },
+    "JS: Console Table": {
+        "lang": "javascript",
+        "code": "console.table(data);"
+    },
+    "SQL: Select Unique": {
+        "lang": "sql",
+        "code": "SELECT DISTINCT column_name FROM table_name;"
+    },
+    "Rust: Hello World": {
+        "lang": "rust",
+        "code": "fn main() {\n    println!(\"Hello, world!\");\n}"
+    }
+}

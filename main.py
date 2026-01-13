@@ -1,50 +1,22 @@
+import json
+import pyperclip
 from textual.app import App, ComposeResult
 from textual.containers import Container, Vertical
-from textual.widgets import Header, Footer, ListView, ListItem, Label, Static
+from textual.widgets import Header, Footer, ListView, ListItem, Label, Static, Input
+from textual.notifications import Notify
 from rich.syntax import Syntax
 
-# --- 1. The Data ---
-# A simple dictionary to store our snippets. 
-# In the future, this could load from a JSON or CSV file.
-SNIPPETS = {
-    "Python: HTTP Server": {
-        "lang": "python",
-        "code": "python -m http.server 8000\n# Serves the current directory on port 8000"
-    },
-    "Git: Undo Last Commit": {
-        "lang": "bash",
-        "code": "git reset --soft HEAD~1\n# Undoes the commit but keeps your changes staged"
-    },
-    "Docker: Remove All Containers": {
-        "lang": "bash",
-        "code": "docker rm $(docker ps -a -q)\n# Force remove all stopped containers"
-    },
-    "JS: Console Table": {
-        "lang": "javascript",
-        "code": "console.table(data);\n// Displays array of objects as a neat table"
-    },
-    "SQL: Select Unique": {
-        "lang": "sql",
-        "code": "SELECT DISTINCT column_name FROM table_name;"
-    }
-}
-
-# --- 2. The Widgets ---
-
-class SnippetList(ListView):
-    """A widget to display the list of selectable snippets."""
-    pass
-
-class CodeView(Static):
-    """A widget to display the syntax-highlighted code."""
-    pass
-
-# --- 3. The Main Application ---
+# --- 1. Data Loader ---
+def load_snippets():
+    try:
+        with open("snippet.json", "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
 
 class SnippetVaultApp(App):
-    """A Textual app to manage code snippets."""
+    """A Textual app to manage, search, and copy code snippets."""
 
-    # CSS styles to layout the app (Looks like CSS, works in Terminal)
     CSS = """
     Screen {
         layout: horizontal;
@@ -58,12 +30,10 @@ class SnippetVaultApp(App):
         background: $surface;
     }
 
-    #sidebar-title {
-        text-align: center;
-        background: $primary;
-        color: auto;
-        padding: 1;
-        text-style: bold;
+    #search-box {
+        dock: top;
+        margin: 1;
+        background: $boost;
     }
 
     #code-container {
@@ -87,50 +57,79 @@ class SnippetVaultApp(App):
 
     BINDINGS = [
         ("q", "quit", "Quit"),
-        ("d", "toggle_dark", "Toggle Dark Mode"),
+        ("d", "toggle_dark", "Dark Mode"),
+        ("c", "copy_snippet", "Copy Code"), 
     ]
 
+    def __init__(self):
+        super().__init__()
+        self.snippets_data = load_snippets()
+        self.current_snippet_code = "" # Tracks what is currently on screen
+
     def compose(self) -> ComposeResult:
-        """Create child widgets for the app."""
         yield Header()
         
-        # Left Sidebar container
+        # Left Sidebar
         with Vertical(id="sidebar"):
-            yield Label("VAULT CONTENTS", id="sidebar-title")
-            
-            # Create a ListItem for each snippet in our dictionary
-            items = [ListItem(Label(title), name=title) for title in SNIPPETS.keys()]
-            yield SnippetList(*items)
+            yield Input(placeholder="Search snippets...", id="search-box")
+            yield ListView(id="snippet-list")
 
-        # Right Code View container
+        # Right Code Area
         with Container(id="code-container"):
-            yield CodeView("Select a snippet from the left to view code...", id="code-view")
+            yield Static("Select a snippet...", id="code-view")
 
         yield Footer()
 
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        """Called when the user clicks or presses Enter on a list item."""
-        # Get the name of the selected item
-        snippet_name = event.item.name
+    def on_mount(self) -> None:
+        """Called when app starts. Load the initial list."""
+        self.populate_list(self.snippets_data)
+
+    def populate_list(self, data_dict):
+        """Helper to clear and refill the list view."""
+        list_view = self.query_one("#snippet-list")
+        list_view.clear()
         
-        # Retrieve data from our dictionary
-        data = SNIPPETS.get(snippet_name)
+        for title in data_dict.keys():
+            # Store the title in the ListItem's ID so we can look it up later
+            list_view.append(ListItem(Label(title), name=title))
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Called immediately when user types in the search box."""
+        search_term = event.value.lower()
+        
+        # Filter dictionary keys based on search term
+        filtered_data = {
+            k: v for k, v in self.snippets_data.items() 
+            if search_term in k.lower()
+        }
+        self.populate_list(filtered_data)
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        """When user presses Enter on a list item."""
+        snippet_name = event.item.name
+        data = self.snippets_data.get(snippet_name)
         
         if data:
-            # Create a Rich Syntax object for beautiful highlighting
-            syntax_view = Syntax(
+            self.current_snippet_code = data["code"]
+            
+            # Render syntax highlighting
+            syntax = Syntax(
                 data["code"],
                 data["lang"],
                 theme="monokai",
                 line_numbers=True,
                 word_wrap=True
             )
-            # Update the CodeView widget
-            self.query_one("#code-view").update(syntax_view)
+            self.query_one("#code-view").update(syntax)
 
-    def action_toggle_dark(self) -> None:
-        """An action to toggle dark mode."""
-        self.dark = not self.dark
+    def action_copy_snippet(self) -> None:
+        """Action bound to 'c' key."""
+        if self.current_snippet_code:
+            pyperclip.copy(self.current_snippet_code)
+            # Show a toast notification (Textual feature!)
+            self.notify("Code copied to clipboard!", title="Success", severity="information")
+        else:
+            self.notify("No snippet selected.", title="Error", severity="error")
 
 if __name__ == "__main__":
     app = SnippetVaultApp()
